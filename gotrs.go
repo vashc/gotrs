@@ -240,7 +240,9 @@ func (c *OTRSClient) CreateSession(renew bool) (err error) {
 }
 
 // TicketSearch возвращает список найденных ID тикетов
-func (c *OTRSClient) TicketSearch(ticket *Ticket) (ids []string, err error) {
+// В качестве аргументов можно указывать дополнительно
+// https://doc.otrs.com/doc/api/otrs/6.0/Perl/Kernel/System/Ticket/TicketSearch.pm.html
+func (c *OTRSClient) TicketSearch(ticket *Ticket, args map[string]interface{}) (ids []string, err error) {
 	var (
 		data   []byte
 		idResp struct {
@@ -252,12 +254,22 @@ func (c *OTRSClient) TicketSearch(ticket *Ticket) (ids []string, err error) {
 		"SessionID": c.SessionID,
 	}
 
-	tf := reflect.TypeOf(ticket).Elem()
-	vf := reflect.ValueOf(ticket).Elem()
-	for i := 0; i < vf.NumField(); i++ {
-		fname := tf.Field(i).Name
-		if v := reflect.Indirect(vf).FieldByName(fname); !v.IsZero() {
-			rawData[fname] = v.Interface()
+	// Тикет может отсутствовать при поиске в очереди
+	if ticket != nil {
+		tf := reflect.TypeOf(ticket).Elem()
+		vf := reflect.ValueOf(ticket).Elem()
+		for i := 0; i < vf.NumField(); i++ {
+			fname := tf.Field(i).Name
+			if v := reflect.Indirect(vf).FieldByName(fname); !v.IsZero() {
+				rawData[fname] = v.Interface()
+			}
+		}
+	}
+
+	// Вносим дополнительные поля
+	if args != nil {
+		for k, v := range args {
+			rawData[k] = v
 		}
 	}
 
@@ -304,7 +316,7 @@ func (c *OTRSClient) TicketByNumber(number string) (ticket *Ticket, err error) {
 		TicketNumber: number,
 	}
 
-	ids, err := c.TicketSearch(ticket)
+	ids, err := c.TicketSearch(ticket, nil)
 	if err != nil {
 		return
 	}
@@ -437,6 +449,30 @@ func AttachmentCreateFromFile(filename string) (att *Attachment, err error) {
 	}
 
 	return AttachmentCreate(data, filepath.Base(filename))
+}
+
+// QueueInfo - получение ID тикетов в очереди по именам и статусам тикетов
+func (c *OTRSClient) QueueInfo(queues, states []string) (ids []string, err error) {
+	args := make(map[string]interface{})
+
+	if queues != nil {
+		args["Queues"] = queues
+	}
+	if states != nil {
+		args["States"] = states
+	}
+
+	if args == nil {
+		err = fmt.Errorf("Необходимо указать название очереди или статус тикета")
+		return
+	}
+
+	ids, err = c.TicketSearch(nil, args)
+	if err != nil {
+		return
+	}
+
+	return
 }
 
 // UnmarshalJSON реализует Unmarshaler для кастомного TicketTime
