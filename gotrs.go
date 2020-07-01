@@ -133,6 +133,7 @@ type Ticket struct {
 	OwnerID      int        `json:"OwnerID,omitempty"`
 	Created      TicketTime `json:"Created,omitempty"`
 	Changed      TicketTime `json:"Changed,omitempty"`
+	Articles     []*Article `json:"Article"`
 }
 
 // Create создаёт объект клиента для выполнения запросов
@@ -287,7 +288,9 @@ func (c *OTRSClient) TicketSearch(ticket *Ticket, args map[string]interface{}) (
 }
 
 // TicketByID получает информацию о тикете по ID
-func (c *OTRSClient) TicketByID(id int) (ticket *Ticket, err error) {
+// flags - слайс строковых флагов:
+// "AllArticles" - получить вместе с информацией о тикете массив связанных сообщений
+func (c *OTRSClient) TicketByID(id int, flags []string) (ticket *Ticket, err error) {
 	var (
 		data   []byte
 		idResp struct {
@@ -299,9 +302,17 @@ func (c *OTRSClient) TicketByID(id int) (ticket *Ticket, err error) {
 		"SessionID": c.SessionID,
 	}
 
+	// Insert additional flags
+	if flags != nil {
+		for _, flag := range flags {
+			rawData[flag] = 1
+		}
+	}
+
 	if data, err = c.MakeRequest("TicketGet", rawData, strconv.Itoa(id)); err != nil {
 		return
 	}
+
 	if err = json.Unmarshal(data, &idResp); err != nil {
 		return
 	}
@@ -311,7 +322,7 @@ func (c *OTRSClient) TicketByID(id int) (ticket *Ticket, err error) {
 }
 
 // TicketByNumber получает информацию о тикете по номеру
-func (c *OTRSClient) TicketByNumber(number string) (ticket *Ticket, err error) {
+func (c *OTRSClient) TicketByNumber(number string, flags []string) (ticket *Ticket, err error) {
 	ticket = &Ticket{
 		TicketNumber: number,
 	}
@@ -330,7 +341,7 @@ func (c *OTRSClient) TicketByNumber(number string) (ticket *Ticket, err error) {
 	if err != nil {
 		return
 	}
-	ticket, err = c.TicketByID(id)
+	ticket, err = c.TicketByID(id, flags)
 
 	return
 }
