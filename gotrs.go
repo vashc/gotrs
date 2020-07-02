@@ -90,11 +90,15 @@ type OTRSClient struct {
 
 // Article - объект статьи в тикете
 type Article struct {
-	Body     string `json:"Body"`
-	Charset  string `json:"Charset"`
-	Subject  string `json:"Subject"`
-	TimeUnit int    `json:"TimeUnit"`
-	MimeType string `json:"MimeType"`
+	From     string
+	To       string
+	CC       string
+	Subject  string
+	Body     string
+	Charset  string
+	MimeType string
+	Created  int64 `json:"IncomingTime"`
+	TimeUnit int64
 }
 
 // DynField - объект динамического поля в тикете
@@ -116,23 +120,23 @@ type TicketTime time.Time
 
 // Ticket - основной объект тикета
 type Ticket struct {
-	TicketID     int        `json:"TicketID"`
-	TicketNumber string     `json:"TicketNumber,omitempty"`
-	Title        string     `json:"Title,omitempty"`
-	QueueID      int        `json:"QueueID,omitempty"`
-	Queue        string     `json:"Queue,omitempty"`
-	TypeID       int        `json:"TypeID,omitempty"`
-	Type         string     `json:"Type,omitempty"`
-	StateID      int        `json:"StateID,omitempty"`
-	State        string     `json:"State,omitempty"`
-	PriorityID   int        `json:"PriorityID,omitempty"`
-	Priority     string     `json:"Priority,omitempty"`
-	CustomerUser string     `json:"CustomerUser,omitempty"`
-	CustomerID   string     `json:"CustomerID,omitempty"`
-	Owner        string     `json:"Owner,omitempty"`
-	OwnerID      int        `json:"OwnerID,omitempty"`
-	Created      TicketTime `json:"Created,omitempty"`
-	Changed      TicketTime `json:"Changed,omitempty"`
+	TicketID     int
+	TicketNumber string
+	Title        string
+	QueueID      int
+	Queue        string
+	TypeID       int
+	Type         string
+	StateID      int
+	State        string
+	PriorityID   int
+	Priority     string
+	CustomerUser string
+	CustomerID   string
+	Owner        string
+	OwnerID      int
+	Created      string
+	Changed      string
 	Articles     []*Article `json:"Article"`
 }
 
