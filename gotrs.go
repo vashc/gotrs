@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -50,6 +51,8 @@ var (
 			},
 		},
 	}
+
+	regAuthFail = regexp.MustCompile("^.*AuthFail.*$")
 )
 
 // APIMethod - объект запроса на API OTRS
@@ -63,9 +66,9 @@ type APIMethod struct {
 // OTRSErrorResponse - ответ OTRS на запрос с ошибкой
 type OTRSErrorResponse struct {
 	Error struct {
-		ErrorMessage string `json:"ErrorMessage"`
-		ErrorCode    string `json:"ErrorCode"`
-	} `json:"Error"`
+		ErrorMessage string
+		ErrorCode    string
+	}
 }
 
 // TicketConnector - набор методов API OTRS
@@ -84,8 +87,8 @@ type OTRSConfig struct {
 // OTRSClient - клиент для работы с API сервиса OTRS
 type OTRSClient struct {
 	Login     string `json:"UserLogin"`
-	Password  string `json:"Password"`
-	SessionID string `json:"SessionID,omitempty"`
+	Password  string
+	SessionID string
 }
 
 // Article - объект статьи в тикете
@@ -103,16 +106,16 @@ type Article struct {
 
 // DynField - объект динамического поля в тикете
 type DynField struct {
-	Name        string `json:"-"`
-	Value       string `json:"-"`
-	SearchValue string `json:"-"`
+	Name        string
+	Value       string
+	SearchValue string
 }
 
 // Attachment - объект прикрепляемого файла - вложения
 type Attachment struct {
-	Content     string `json:"Content"`
-	ContentType string `json:"ContentType"`
-	Filename    string `json:"Filename"`
+	Content     string
+	ContentType string
+	Filename    string
 }
 
 // TicketTime - кастомный формат времени для тикета
@@ -208,7 +211,7 @@ func (c *OTRSClient) MakeRequest(name string, rawData map[string]interface{}, ar
 	}
 	if otrsResp.Error.ErrorCode != "" {
 		// Сессия завершилась, необходимо обновить токен и повторить запрос
-		if otrsResp.Error.ErrorCode == "TicketCreate.AuthFail" {
+		if regAuthFail.MatchString(otrsResp.Error.ErrorCode) {
 			if err = c.CreateSession(true); err != nil {
 				return
 			}
