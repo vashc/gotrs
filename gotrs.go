@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	config = &OTRSConfig{
+	config = &Config{
 		BaseURL: "otrs/nph-genericinterface.pl/Webservice/",
 		Connector: TicketConnector{
 			Name: "GenericTicketConnectorREST",
@@ -63,8 +63,8 @@ type APIMethod struct {
 	Login     bool   `yaml:"login"`
 }
 
-// OTRSErrorResponse - ответ OTRS на запрос с ошибкой
-type OTRSErrorResponse struct {
+// ErrorResponse - ответ OTRS на запрос с ошибкой
+type ErrorResponse struct {
 	Error struct {
 		ErrorMessage string
 		ErrorCode    string
@@ -77,15 +77,15 @@ type TicketConnector struct {
 	API  map[string]*APIMethod
 }
 
-// OTRSConfig - базовый конфиг настройки запросов в OTRS
-type OTRSConfig struct {
+// Config - базовый конфиг настройки запросов в OTRS
+type Config struct {
 	BaseAddress string
 	BaseURL     string
 	Connector   TicketConnector
 }
 
-// OTRSClient - клиент для работы с API сервиса OTRS
-type OTRSClient struct {
+// Client - клиент для работы с API сервиса OTRS
+type Client struct {
 	Login     string `json:"UserLogin"`
 	Password  string
 	SessionID string
@@ -104,10 +104,10 @@ type Article struct {
 	TimeUnit int64
 }
 
-// DynField - объект динамического поля в тикете
-type DynField struct {
+// Field - объект динамического поля в тикете
+type Field struct {
 	Name        string
-	Value       string
+	Value       interface{}
 	SearchValue string
 }
 
@@ -117,9 +117,6 @@ type Attachment struct {
 	ContentType string
 	Filename    string
 }
-
-// TicketTime - кастомный формат времени для тикета
-type TicketTime time.Time
 
 // Ticket - основной объект тикета
 type Ticket struct {
@@ -141,13 +138,26 @@ type Ticket struct {
 	Created      string
 	Changed      string
 	Articles     []*Article `json:"Article"`
+	Fields       []*Field   `json:"DynamicField"`
 }
 
+// Request - объект запроса к OTRS
+type Request struct {
+	SessionID   string
+	Ticket      *Ticket
+	Article     *Article
+	Attachments []*Attachment `json:"Attachment"`
+	Fields      []*Field      `json:"DynamicField"`
+}
+
+// RequestOption дополняет объект запроса параметром
+type RequestOption func(r *Request)
+
 // Create создаёт объект клиента для выполнения запросов
-func Create(baseAddr, login, password string) (client *OTRSClient, err error) {
+func Create(baseAddr, login, password string) (client *Client, err error) {
 	config.BaseAddress = baseAddr
 
-	client = &OTRSClient{
+	client = &Client{
 		Login:    login,
 		Password: password,
 	}
@@ -159,27 +169,33 @@ func Create(baseAddr, login, password string) (client *OTRSClient, err error) {
 	return
 }
 
-// MakeRequest - формирование запроса в OTRS
-func (c *OTRSClient) MakeRequest(name string, rawData map[string]interface{}, args ...string) (data []byte, err error) {
+// makeRequest - формирование запроса в OTRS
+// Использует объект запроса Request при создании/обновлении тикета и набор флагов map[string]interface{} при получении информации о тикете
+func (c *Client) makeRequest(name string, request *Request, rawData map[string]interface{}, args ...string) (data []byte, err error) {
 	var (
 		method   *APIMethod
 		url      string
-		otrsResp *OTRSErrorResponse
+		otrsResp *ErrorResponse
 		payload  []byte
 	)
 
-	if len(rawData) == 0 {
-		err = fmt.Errorf("Пустой запрос")
+	if request == nil && len(rawData) == 0 {
+		err = fmt.Errorf("пустой запрос")
 		return
 	}
 
 	method, ok := config.Connector.API[name]
 	if !ok {
-		err = fmt.Errorf("Неверное имя запроса в OTRS: %s", name)
+		err = fmt.Errorf("неверное имя запроса в OTRS: %s", name)
 		return
 	}
 
-	if payload, err = json.Marshal(rawData); err != nil {
+	if request != nil {
+		payload, err = json.Marshal(request)
+	} else {
+		payload, err = json.Marshal(rawData)
+	}
+	if err != nil {
 		return
 	}
 	body := bytes.NewReader(payload)
@@ -216,7 +232,7 @@ func (c *OTRSClient) MakeRequest(name string, rawData map[string]interface{}, ar
 				return
 			}
 			rawData["SessionID"] = c.SessionID
-			return c.MakeRequest(name, rawData, args...)
+			return c.makeRequest(name, request, rawData, args...)
 		}
 		err = fmt.Errorf("%s: %s", otrsResp.Error.ErrorCode, otrsResp.Error.ErrorMessage)
 		return
@@ -226,16 +242,16 @@ func (c *OTRSClient) MakeRequest(name string, rawData map[string]interface{}, ar
 }
 
 // CreateSession создаёт активную сессию или обновляет токен
-func (c *OTRSClient) CreateSession(renew bool) (err error) {
+func (c *Client) CreateSession(renew bool) (err error) {
 	var data []byte
 
 	if c.Login == "" || c.Password == "" {
-		err = fmt.Errorf("Не указан логин/пароль для авторизации в OTRS")
+		err = fmt.Errorf("не указан логин/пароль для авторизации в OTRS")
 		return
 	}
 
 	if renew || c.SessionID == "" {
-		if data, err = c.MakeRequest("SessionCreate", map[string]interface{}{
+		if data, err = c.makeRequest("SessionCreate", nil, map[string]interface{}{
 			"UserLogin": c.Login,
 			"Password":  c.Password,
 		}); err != nil {
@@ -250,7 +266,7 @@ func (c *OTRSClient) CreateSession(renew bool) (err error) {
 // TicketSearch возвращает список найденных ID тикетов
 // В качестве аргументов можно указывать дополнительно
 // https://doc.otrs.com/doc/api/otrs/6.0/Perl/Kernel/System/Ticket/TicketSearch.pm.html
-func (c *OTRSClient) TicketSearch(ticket *Ticket, args map[string]interface{}) (ids []string, err error) {
+func (c *Client) TicketSearch(ticket *Ticket, args map[string]interface{}) (ids []string, err error) {
 	var (
 		data   []byte
 		idResp struct {
@@ -281,7 +297,7 @@ func (c *OTRSClient) TicketSearch(ticket *Ticket, args map[string]interface{}) (
 		}
 	}
 
-	if data, err = c.MakeRequest("TicketSearch", rawData); err != nil {
+	if data, err = c.makeRequest("TicketSearch", nil, rawData); err != nil {
 		return
 	}
 
@@ -297,7 +313,7 @@ func (c *OTRSClient) TicketSearch(ticket *Ticket, args map[string]interface{}) (
 // TicketByID получает информацию о тикете по ID
 // flags - слайс строковых флагов:
 // "AllArticles" - получить вместе с информацией о тикете массив связанных сообщений
-func (c *OTRSClient) TicketByID(id int, flags []string) (ticket *Ticket, err error) {
+func (c *Client) TicketByID(id int, flags ...string) (ticket *Ticket, err error) {
 	var (
 		data   []byte
 		idResp struct {
@@ -316,9 +332,10 @@ func (c *OTRSClient) TicketByID(id int, flags []string) (ticket *Ticket, err err
 		}
 	}
 
-	if data, err = c.MakeRequest("TicketGet", rawData, strconv.Itoa(id)); err != nil {
+	if data, err = c.makeRequest("TicketGet", nil, rawData, strconv.Itoa(id)); err != nil {
 		return
 	}
+	fmt.Println(string(data))
 
 	if err = json.Unmarshal(data, &idResp); err != nil {
 		return
@@ -329,7 +346,7 @@ func (c *OTRSClient) TicketByID(id int, flags []string) (ticket *Ticket, err err
 }
 
 // TicketByNumber получает информацию о тикете по номеру
-func (c *OTRSClient) TicketByNumber(number string, flags []string) (ticket *Ticket, err error) {
+func (c *Client) TicketByNumber(number string, flags ...string) (ticket *Ticket, err error) {
 	ticket = &Ticket{
 		TicketNumber: number,
 	}
@@ -339,7 +356,7 @@ func (c *OTRSClient) TicketByNumber(number string, flags []string) (ticket *Tick
 		return
 	}
 	if len(ids) == 0 {
-		err = fmt.Errorf("Тикет №%s не найден в OTRS", number)
+		err = fmt.Errorf("тикет №%s не найден в OTRS", number)
 		return
 	}
 
@@ -348,13 +365,28 @@ func (c *OTRSClient) TicketByNumber(number string, flags []string) (ticket *Tick
 	if err != nil {
 		return
 	}
-	ticket, err = c.TicketByID(id, flags)
+	ticket, err = c.TicketByID(id, flags...)
 
 	return
 }
 
-// TicketCreate создаёт новый тикет в OTRS и заполняет поля TicketID, TicketNumber в случае успеха
-func (c *OTRSClient) TicketCreate(ticket *Ticket, article *Article, attachments []*Attachment) (err error) {
+// WithAttachments добавляет к запросу прикреплённые файлы
+func WithAttachments(attachments []*Attachment) RequestOption {
+	return func(r *Request) {
+		r.Attachments = attachments
+	}
+}
+
+// WithFields добавляет к запросу динамические поля
+func WithFields(fields []*Field) RequestOption {
+	return func(r *Request) {
+		r.Fields = fields
+	}
+}
+
+// TicketCreate создаёт новый тикет в OTRS и заполняет поля TicketID, TicketNumber в случае успеха.
+// Параметры Ticket, Article являются обязательными, остальные, типа Attachment, DynamicField - опциональными
+func (c *Client) TicketCreate(ticket *Ticket, article *Article, opts ...RequestOption) (err error) {
 	var (
 		data []byte
 		resp struct {
@@ -368,14 +400,16 @@ func (c *OTRSClient) TicketCreate(ticket *Ticket, article *Article, attachments 
 		return
 	}
 
-	rawData := map[string]interface{}{
-		"SessionID":  c.SessionID,
-		"Ticket":     ticket,
-		"Article":    article,
-		"Attachment": attachments,
+	req := &Request{
+		SessionID: c.SessionID,
+		Ticket:    ticket,
+		Article:   article,
+	}
+	for i := range opts {
+		opts[i](req)
 	}
 
-	if data, err = c.MakeRequest("TicketCreate", rawData); err != nil {
+	if data, err = c.makeRequest("TicketCreate", req, nil); err != nil {
 		return
 	}
 	if err = json.Unmarshal(data, &resp); err != nil {
@@ -388,20 +422,22 @@ func (c *OTRSClient) TicketCreate(ticket *Ticket, article *Article, attachments 
 }
 
 // TicketUpdate - обновление информации о тикете
-func (c *OTRSClient) TicketUpdate(ticket *Ticket, article *Article, attachments []*Attachment) (err error) {
+func (c *Client) TicketUpdate(ticket *Ticket, article *Article, opts ...RequestOption) (err error) {
 	if ticket.TicketID == 0 {
-		err = fmt.Errorf("Необходимо указать TicketID")
+		err = fmt.Errorf("необходимо указать TicketID")
 		return
 	}
 
-	rawData := map[string]interface{}{
-		"SessionID":  c.SessionID,
-		"Ticket":     ticket,
-		"Article":    article,
-		"Attachment": attachments,
+	req := &Request{
+		SessionID: c.SessionID,
+		Ticket:    ticket,
+		Article:   article,
+	}
+	for i := range opts {
+		opts[i](req)
 	}
 
-	if _, err = c.MakeRequest("TicketUpdate", rawData, strconv.Itoa(ticket.TicketID)); err != nil {
+	if _, err = c.makeRequest("TicketUpdate", req, nil, strconv.Itoa(ticket.TicketID)); err != nil {
 		return
 	}
 
@@ -411,22 +447,22 @@ func (c *OTRSClient) TicketUpdate(ticket *Ticket, article *Article, attachments 
 // Valid - валидация полей в тикете (некоторые поля обязательны, некоторые должны присутствовать парами)
 func (t *Ticket) Valid() (valid bool, err error) {
 	if t.Title == "" {
-		err = fmt.Errorf("Необходимо указать Title")
+		err = fmt.Errorf("необходимо указать Title")
 	}
 	if t.Queue == "" && t.QueueID == 0 {
-		err = fmt.Errorf("Необходимо указать Queue либо QueueID")
+		err = fmt.Errorf("необходимо указать Queue либо QueueID")
 	}
 	if t.State == "" && t.StateID == 0 {
-		err = fmt.Errorf("Необходимо указать State либо StateID")
+		err = fmt.Errorf("необходимо указать State либо StateID")
 	}
 	if t.Priority == "" && t.PriorityID == 0 {
-		err = fmt.Errorf("Необходимо указать Priority либо PriorityID")
+		err = fmt.Errorf("необходимо указать Priority либо PriorityID")
 	}
 	if t.Type != "" && t.TypeID != 0 {
-		err = fmt.Errorf("Необходимо указать либо Type либо TypeID")
+		err = fmt.Errorf("необходимо указать либо Type либо TypeID")
 	}
 	if t.CustomerUser == "" {
-		err = fmt.Errorf("Необходимо указать CustomerUser")
+		err = fmt.Errorf("необходимо указать CustomerUser")
 	}
 
 	if err == nil {
@@ -470,7 +506,7 @@ func AttachmentCreateFromFile(filename string) (att *Attachment, err error) {
 }
 
 // QueueInfo - получение ID тикетов в очереди по именам и статусам тикетов
-func (c *OTRSClient) QueueInfo(queues, states []string) (ids []string, err error) {
+func (c *Client) QueueInfo(queues, states []string) (ids []string, err error) {
 	args := make(map[string]interface{})
 
 	if queues != nil {
@@ -480,8 +516,8 @@ func (c *OTRSClient) QueueInfo(queues, states []string) (ids []string, err error
 		args["States"] = states
 	}
 
-	if args == nil {
-		err = fmt.Errorf("Необходимо указать название очереди или статус тикета")
+	if len(args) == 0 {
+		err = fmt.Errorf("необходимо указать название очереди или статус тикета")
 		return
 	}
 
@@ -493,23 +529,12 @@ func (c *OTRSClient) QueueInfo(queues, states []string) (ids []string, err error
 	return
 }
 
-// UnmarshalJSON реализует Unmarshaler для кастомного TicketTime
-func (t *TicketTime) UnmarshalJSON(b []byte) (err error) {
-	rawT, err := time.Parse("2006-01-02 15:04:05", strings.Trim(string(b), "\""))
-	if err != nil {
-		return
-	}
-	*t = TicketTime(rawT)
-
-	return
-}
-
 // formURL формирует строку запроса с подстановкой аргументов
 func formURL(route string, args ...string) (url string, err error) {
 	if strings.Contains(route, ":") {
 		rawRoute := strings.Split(route, "/:")
 		if len(args) != len(rawRoute)-1 {
-			err = fmt.Errorf("Неверное количество аргументов в запросе")
+			err = fmt.Errorf("неверное количество аргументов в запросе")
 			return
 		}
 		for idx := range args {
