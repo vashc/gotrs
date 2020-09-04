@@ -371,14 +371,14 @@ func (c *Client) TicketByNumber(number string, flags ...string) (ticket *Ticket,
 }
 
 // WithAttachments добавляет к запросу прикреплённые файлы
-func WithAttachments(attachments []*Attachment) RequestOption {
+func WithAttachments(attachments ...*Attachment) RequestOption {
 	return func(r *Request) {
 		r.Attachments = attachments
 	}
 }
 
 // WithFields добавляет к запросу динамические поля
-func WithFields(fields []*Field) RequestOption {
+func WithFields(fields ...*Field) RequestOption {
 	return func(r *Request) {
 		r.Fields = fields
 	}
