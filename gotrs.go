@@ -231,7 +231,11 @@ func (c *Client) makeRequest(name string, request *Request, rawData map[string]i
 			if err = c.CreateSession(true); err != nil {
 				return
 			}
-			rawData["SessionID"] = c.SessionID
+			if request != nil {
+				request.SessionID = c.SessionID
+			} else {
+				rawData["SessionID"] = c.SessionID
+			}
 			return c.makeRequest(name, request, rawData, args...)
 		}
 		err = fmt.Errorf("%s: %s", otrsResp.Error.ErrorCode, otrsResp.Error.ErrorMessage)
