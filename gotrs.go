@@ -339,7 +339,6 @@ func (c *Client) TicketByID(id int, flags ...string) (ticket *Ticket, err error)
 	if data, err = c.makeRequest("TicketGet", nil, rawData, strconv.Itoa(id)); err != nil {
 		return
 	}
-	fmt.Println(string(data))
 
 	if err = json.Unmarshal(data, &idResp); err != nil {
 		return
