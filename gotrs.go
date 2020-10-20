@@ -102,6 +102,7 @@ type Article struct {
 	MimeType string
 	Created  int64 `json:"IncomingTime"`
 	TimeUnit int64
+	Type     string `json:"ArticleType"`
 }
 
 // Field - объект динамического поля в тикете
