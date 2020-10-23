@@ -479,7 +479,9 @@ func (t *Ticket) Valid() (valid bool, err error) {
 // ArticleCreate формирует объект статьи, заполняя необходимые для запросов поля
 func ArticleCreate(a *Article) *Article {
 	a.Charset = "UTF8"
-	a.MimeType = "text/plain"
+	if a.MimeType == "" {
+		a.MimeType = "text/plain"
+	}
 
 	return a
 }
