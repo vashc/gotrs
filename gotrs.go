@@ -89,6 +89,7 @@ type Client struct {
 	Login     string `json:"UserLogin"`
 	Password  string
 	SessionID string
+	HTTPClient *http.Client
 }
 
 // Article - объект статьи в тикете
@@ -158,9 +159,11 @@ type RequestOption func(r *Request)
 func Create(baseAddr, login, password string) (client *Client, err error) {
 	config.BaseAddress = baseAddr
 
+	// Default HTTP client timeout is 30 seconds
 	client = &Client{
 		Login:    login,
 		Password: password,
+		HTTPClient: &http.Client{Timeout: time.Duration(30) * time.Second},
 	}
 
 	if err = client.CreateSession(false); err != nil {
@@ -201,7 +204,6 @@ func (c *Client) makeRequest(name string, request *Request, rawData map[string]i
 	}
 	body := bytes.NewReader(payload)
 
-	client := &http.Client{Timeout: time.Duration(30) * time.Second}
 	if url, err = formURL(method.Route, args...); err != nil {
 		return
 	}
@@ -211,7 +213,7 @@ func (c *Client) makeRequest(name string, request *Request, rawData map[string]i
 		return
 	}
 
-	resp, err := client.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return
 	}
@@ -533,6 +535,13 @@ func (c *Client) QueueInfo(queues, states []string) (ids []string, err error) {
 	}
 
 	return
+}
+
+// SetHTTPClient sets up the HTTP client to work with
+func (c *Client) SetHTTPClient(client *http.Client) {
+	if client != nil {
+		c.HTTPClient = client
+	}
 }
 
 // formURL формирует строку запроса с подстановкой аргументов
