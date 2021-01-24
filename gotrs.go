@@ -86,24 +86,25 @@ type Config struct {
 
 // Client - клиент для работы с API сервиса OTRS
 type Client struct {
-	Login     string `json:"UserLogin"`
-	Password  string
-	SessionID string
+	Login      string `json:"UserLogin"`
+	Password   string
+	SessionID  string
 	HTTPClient *http.Client
 }
 
 // Article - объект статьи в тикете
 type Article struct {
-	From     string
-	To       string
-	CC       string
-	Subject  string
-	Body     string
-	Charset  string
-	MimeType string
-	Created  int64 `json:"IncomingTime"`
-	TimeUnit int64
-	Type     string `json:"ArticleType"`
+	From        string
+	To          string
+	CC          string
+	Subject     string
+	Body        string
+	Charset     string
+	MimeType    string
+	Created     int64 `json:"IncomingTime"`
+	TimeUnit    int64
+	Type        string        `json:"ArticleType"`
+	Attachments []*Attachment `json:"Attachment"`
 }
 
 // Field - объект динамического поля в тикете
@@ -161,8 +162,8 @@ func Create(baseAddr, login, password string) (client *Client, err error) {
 
 	// Default HTTP client timeout is 30 seconds
 	client = &Client{
-		Login:    login,
-		Password: password,
+		Login:      login,
+		Password:   password,
 		HTTPClient: &http.Client{Timeout: time.Duration(30) * time.Second},
 	}
 
