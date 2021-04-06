@@ -1,4 +1,4 @@
-package gotrs
+package main
 
 import (
 	"bytes"
@@ -208,6 +208,8 @@ func (c *Client) makeRequest(name string, request *Request, rawData map[string]i
 		return
 	}
 
+	fmt.Println(url, string(payload))
+
 	req, err := http.NewRequest(method.ReqMethod, url, body)
 	if err != nil {
 		return
@@ -223,6 +225,8 @@ func (c *Client) makeRequest(name string, request *Request, rawData map[string]i
 	if err != nil {
 		return
 	}
+
+	fmt.Println(string(data))
 
 	// Проверка, не вернулась ли ошибка
 	if err = json.Unmarshal(data, &otrsResp); err != nil {
@@ -566,4 +570,27 @@ func formURL(route string, args ...string) (url string, err error) {
 	)
 
 	return
+}
+
+func main() {
+	c, err := Create("http://192.168.112.60/", "OTRS_edo_form", "66Ds;HfpGhjLji")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	//ticket, err := c.TicketByID(223358, "AllArticles")
+	ticket, err := c.TicketByNumber("2020122250009369", "AllArticles")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	re := regexp.MustCompile(`[\n]`)
+	for i := range ticket.Articles {
+		fmt.Printf("ticket article %d: %s\n", i, re.ReplaceAllString(ticket.Articles[i].Body, "!"))
+		fmt.Println(ticket.Articles[i].Subject)
+		fmt.Println(ticket.Articles[i].To)
+	}
+	//fmt.Printf("%+v\n", ticket.Articles[3])
+	//fmt.Printf("ticket article: %s\n", re.ReplaceAllString(ticket.Articles[3].Body, "!"))
 }

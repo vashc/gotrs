@@ -1,4 +1,4 @@
-module github.com/Wittlich/gotrs
+module github.com/vashc/gotrs
 
 go 1.13
 
